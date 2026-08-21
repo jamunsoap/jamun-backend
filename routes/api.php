@@ -30,6 +30,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/payments/razorpay/fail', [PaymentController::class, 'failRazorpayPayment']);
         Route::post('/payments/razorpay/webhook', [PaymentController::class, 'handleWebhook']);
 
+        // Shiprocket Webhook
+        Route::post('/shiprocket/webhook', [\App\Http\Controllers\Api\V1\ShiprocketWebhookController::class, 'handle']);
+
         // Reviews
         Route::get('/products/{id}/reviews', [ReviewController::class, 'index']);
         Route::post('/reviews', [ReviewController::class, 'store']);

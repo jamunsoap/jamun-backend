@@ -66,37 +66,18 @@ class ShiprocketService
     {
         $order->loadMissing('orderItems.product');
 
-        // Sandbox / Mock simulation if no live credentials
-        if (!$this->isConfigured() || !$this->getToken()) {
-            $mockShipmentId = 'SR-SHIP-' . rand(100000, 999999);
-            $mockOrderId = 'SR-ORD-' . rand(100000, 999999);
-            $mockAwb = '141' . rand(100000000, 999999999);
-            $mockCourier = 'BlueDart Express';
-
-            $order->update([
-                'courier_name' => $mockCourier,
-                'tracking_number' => $mockAwb,
-                'awb_code' => $mockAwb,
-                'shiprocket_order_id' => $mockOrderId,
-                'shiprocket_shipment_id' => $mockShipmentId,
-                'order_status' => 'shipped',
-            ]);
-
-            OrderStatusHistory::create([
-                'order_id' => $order->id,
-                'status' => 'shipped',
-                'location' => 'Fulfillment Center (Gandhinagar, GJ)',
-                'comment' => "Order pushed to {$mockCourier} via Shiprocket (AWB: {$mockAwb}).",
-            ]);
-
+        if (!$this->isConfigured()) {
             return [
-                'success' => true,
-                'is_mock' => true,
-                'order_id' => $mockOrderId,
-                'shipment_id' => $mockShipmentId,
-                'awb_code' => $mockAwb,
-                'courier_name' => $mockCourier,
-                'message' => 'Shipment successfully created in sandbox mode.',
+                'success' => false,
+                'message' => 'Shiprocket credentials are not configured in .env',
+            ];
+        }
+
+        $token = $this->getToken();
+        if (!$token) {
+            return [
+                'success' => false,
+                'message' => 'Failed to authenticate with Shiprocket. Check your API Email/Password.',
             ];
         }
 
@@ -121,7 +102,7 @@ class ShiprocketService
             $payload = [
                 'order_id' => $order->order_number,
                 'order_date' => $order->created_at->format('Y-m-d H:i'),
-                'pickup_location' => 'Primary Warehouse',
+                'pickup_location' => 'Home', // Must match the Exact Name in Shiprocket Dashboard
                 'channel_id' => '',
                 'comment' => 'Jadui Jamun Botanical Skincare Order',
                 'billing_customer_name' => $order->customer_name,
@@ -177,6 +158,7 @@ class ShiprocketService
                     'awb_code' => $awbCode,
                     'courier_name' => $courierName,
                     'message' => 'Order successfully sent to Shiprocket!',
+                    'raw_data' => $data,
                 ];
             }
 
@@ -190,6 +172,62 @@ class ShiprocketService
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Cancel an order in Shiprocket
+     */
+    public function cancelOrder(Order $order): array
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Shiprocket credentials are not configured in .env',
+            ];
+        }
+
+        $token = $this->getToken();
+        if (!$token) {
+            return [
+                'success' => false,
+                'message' => 'Failed to authenticate with Shiprocket. Check your API Email/Password.',
+            ];
+        }
+
+        if (empty($order->shiprocket_order_id)) {
+            return [
+                'success' => false,
+                'message' => 'This order does not have a Shiprocket Order ID.',
+            ];
+        }
+
+        try {
+            $response = Http::withToken($token)
+                ->post("{$this->baseUrl}/orders/cancel", [
+                    'ids' => [(int) $order->shiprocket_order_id]
+                ]);
+
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Order cancelled in Shiprocket successfully.',
+                    'raw_data' => $response->json()
+                ];
+            }
+
+            Log::error('Shiprocket order cancel failed: ' . $response->body());
+            return [
+                'success' => false,
+                'message' => 'Shiprocket API Error: ' . ($response->json('message') ?? 'Could not cancel shipment.'),
+                'raw_data' => $response->json()
+            ];
+        } catch (Exception $e) {
+            Log::error('Shiprocket order cancel exception: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Exception: ' . $e->getMessage(),
             ];
         }
     }

@@ -55,7 +55,7 @@ class OrderController extends Controller
     {
         $order = Order::where('order_number', $id)
             ->orWhere('id', is_numeric($id) ? $id : 0)
-            ->with(['orderItems', 'statusHistories', 'latestPayment'])
+            ->with(['orderItems.product', 'statusHistories', 'latestPayment'])
             ->first();
 
         if (!$order) {
@@ -82,7 +82,7 @@ class OrderController extends Controller
         $order = Order::where('order_number', $searchTerm)
             ->orWhere('customer_phone', $searchTerm)
             ->latest()
-            ->with(['orderItems', 'statusHistories', 'latestPayment'])
+            ->with(['orderItems.product', 'statusHistories', 'latestPayment'])
             ->first();
 
         if (!$order) {

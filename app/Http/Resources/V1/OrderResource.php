@@ -32,7 +32,11 @@ class OrderResource extends JsonResource
             ],
             'pricing' => [
                 'items_price' => (float)$this->items_price,
-                'discount' => 0.00,
+                'discount' => (float)($this->orderItems ?? collect())->reduce(function ($carry, $item) {
+                    $originalPrice = $item->product?->price ?? $item->price;
+                    $discountPerUnit = max(0.00, (float)$originalPrice - (float)$item->price);
+                    return $carry + ($discountPerUnit * $item->quantity);
+                }, 0.00),
                 'shipping_price' => (float)$this->shipping_price,
                 'total_price' => (float)$this->total_price,
             ],

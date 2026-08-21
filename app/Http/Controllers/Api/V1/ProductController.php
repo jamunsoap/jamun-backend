@@ -22,6 +22,9 @@ class ProductController extends Controller
         if (!$hasFilters && (int)$request->input('page', 1) === 1) {
             $products = Cache::remember('products.all_active', 3600, function () use ($request) {
                 return Product::where('is_active', true)
+                    ->withCount(['reviews as reviews_count' => function ($q) {
+                        $q->where('is_approved', true);
+                    }])
                     ->latest()
                     ->paginate((int)$request->input('per_page', 12));
             });
@@ -29,7 +32,9 @@ class ProductController extends Controller
             return ProductResource::collection($products);
         }
 
-        $query = Product::where('is_active', true);
+        $query = Product::where('is_active', true)->withCount(['reviews as reviews_count' => function ($q) {
+            $q->where('is_approved', true);
+        }]);
 
         // Filter by category
         if ($request->filled('category')) {
@@ -101,6 +106,9 @@ class ProductController extends Controller
         $products = Cache::remember('products.featured', 3600, function () {
             return Product::where('is_active', true)
                 ->where('is_featured', true)
+                ->withCount(['reviews as reviews_count' => function ($q) {
+                    $q->where('is_approved', true);
+                }])
                 ->latest()
                 ->take(4)
                 ->get();

@@ -12,6 +12,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Tables\Columns\TextColumn;
@@ -161,108 +162,149 @@ class OrderResource extends Resource
                     ]),
             ])
             ->actions([
-                EditAction::make(),
-                Action::make('shiprocket_push')
-                    ->label('Shiprocket')
-                    ->icon('heroicon-o-paper-airplane')
-                    ->color('primary')
-                    ->requiresConfirmation()
-                    ->modalHeading('Push Order to Shiprocket')
-                    ->modalDescription('This will create the shipment in Shiprocket and generate an AWB tracking number.')
-                    ->visible(fn (Order $record) => empty($record->awb_code) && $record->order_status !== 'cancelled')
-                    ->action(function (Order $record) {
-                        $service = app(\App\Services\ShiprocketService::class);
-                        $result = $service->createShipment($record);
-                        
-                        if ($result['success']) {
+                ActionGroup::make([
+                    EditAction::make(),
+                    Action::make('accept_order')
+                        ->label('Accept')
+                        ->icon('heroicon-o-check')
+                        ->color('success')
+                        ->visible(fn (Order $record) => $record->order_status === 'pending')
+                        ->action(function (Order $record) {
+                            $record->update(['order_status' => 'confirmed']);
+                            OrderStatusHistory::create([
+                                'order_id' => $record->id,
+                                'status' => 'confirmed',
+                                'location' => 'Merchant Store',
+                                'comment' => 'Order accepted and confirmed by merchant.',
+                            ]);
+                        }),
+                    Action::make('pack_order')
+                        ->label('Pack')
+                        ->icon('heroicon-o-archive-box')
+                        ->color('warning')
+                        ->visible(fn (Order $record) => $record->order_status === 'confirmed')
+                        ->action(function (Order $record) {
+                            $record->update(['order_status' => 'packed']);
+                            OrderStatusHistory::create([
+                                'order_id' => $record->id,
+                                'status' => 'packed',
+                                'location' => 'Fulfillment Center',
+                                'comment' => 'Order packed and prepared for shipment.',
+                            ]);
+                        }),
+                    Action::make('ship_order')
+                        ->label('Ship')
+                        ->icon('heroicon-o-truck')
+                        ->color('info')
+                        ->visible(fn (Order $record) => $record->order_status === 'packed')
+                        ->action(function (Order $record) {
+                            $record->update(['order_status' => 'shipped']);
+                            OrderStatusHistory::create([
+                                'order_id' => $record->id,
+                                'status' => 'shipped',
+                                'location' => 'Gujarat Hub',
+                                'comment' => 'Package handed over to Express Courier.',
+                            ]);
+                        }),
+                    Action::make('out_for_delivery')
+                        ->label('Out for Delivery')
+                        ->icon('heroicon-o-paper-airplane')
+                        ->color('warning')
+                        ->visible(fn (Order $record) => $record->order_status === 'shipped')
+                        ->action(function (Order $record) {
+                            $record->update(['order_status' => 'out_for_delivery']);
+                            OrderStatusHistory::create([
+                                'order_id' => $record->id,
+                                'status' => 'out_for_delivery',
+                                'location' => 'Local Delivery Hub',
+                                'comment' => 'Package is out for delivery with courier agent.',
+                            ]);
+                        }),
+                    Action::make('deliver_order')
+                        ->label('Deliver')
+                        ->icon('heroicon-o-check-circle')
+                        ->color('success')
+                        ->visible(fn (Order $record) => in_array($record->order_status, ['shipped', 'out_for_delivery']))
+                        ->action(function (Order $record) {
+                            $record->update([
+                                'order_status' => 'delivered',
+                                'is_delivered' => true,
+                                'delivered_at' => now(),
+                                'is_paid' => true,
+                            ]);
+                            OrderStatusHistory::create([
+                                'order_id' => $record->id,
+                                'status' => 'delivered',
+                                'location' => 'Customer Destination',
+                                'comment' => 'Order successfully delivered to customer.',
+                            ]);
+                        }),
+                    Action::make('shiprocket_push')
+                        ->label('Push to Shiprocket')
+                        ->icon('heroicon-o-paper-airplane')
+                        ->color('primary')
+                        ->requiresConfirmation()
+                        ->modalHeading('Push Order to Shiprocket')
+                        ->modalDescription('This will create the shipment in Shiprocket and generate an AWB tracking number.')
+                        ->visible(fn (Order $record) => empty($record->awb_code) && $record->order_status !== 'cancelled')
+                        ->action(function (Order $record) {
+                            $service = app(\App\Services\ShiprocketService::class);
+                            $result = $service->createShipment($record);
+                            
+                            if ($result['success']) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Shiprocket Response')
+                                    ->body(json_encode($result['raw_data'] ?? 'No raw data'))
+                                    ->success()
+                                    ->persistent()
+                                    ->send();
+                            } else {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Shiprocket Error')
+                                    ->body($result['message'])
+                                    ->danger()
+                                    ->persistent()
+                                    ->send();
+                            }
+                        }),
+                    Action::make('cancel_order')
+                        ->label('Cancel Order')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Cancel Order')
+                        ->modalDescription('Are you sure you want to cancel this order? This will also attempt to cancel the shipment in Shiprocket if applicable.')
+                        ->visible(fn (Order $record) => $record->order_status !== 'cancelled' && $record->order_status !== 'delivered')
+                        ->action(function (Order $record) {
+                            if (!empty($record->shiprocket_order_id)) {
+                                $service = app(\App\Services\ShiprocketService::class);
+                                $result = $service->cancelOrder($record);
+                                if (!$result['success']) {
+                                    \Filament\Notifications\Notification::make()
+                                        ->title('Shiprocket Cancel Failed')
+                                        ->body($result['message'])
+                                        ->danger()
+                                        ->persistent()
+                                        ->send();
+                                    return;
+                                }
+                            }
+
+                            $record->update(['order_status' => 'cancelled']);
+                            OrderStatusHistory::create([
+                                'order_id' => $record->id,
+                                'status' => 'cancelled',
+                                'location' => 'Merchant Store',
+                                'comment' => 'Order was cancelled by the merchant.',
+                            ]);
+
                             \Filament\Notifications\Notification::make()
-                                ->title('Shiprocket Success')
-                                ->body($result['message'] . " (AWB: {$result['awb_code']})")
+                                ->title('Order Cancelled')
+                                ->body('Order has been successfully cancelled locally and in Shiprocket (if applicable).')
                                 ->success()
                                 ->send();
-                        } else {
-                            \Filament\Notifications\Notification::make()
-                                ->title('Shiprocket Error')
-                                ->body($result['message'])
-                                ->danger()
-                                ->send();
-                        }
-                    }),
-                Action::make('accept_order')
-                    ->label('Accept')
-                    ->icon('heroicon-o-check')
-                    ->color('success')
-                    ->visible(fn (Order $record) => $record->order_status === 'pending')
-                    ->action(function (Order $record) {
-                        $record->update(['order_status' => 'confirmed']);
-                        OrderStatusHistory::create([
-                            'order_id' => $record->id,
-                            'status' => 'confirmed',
-                            'location' => 'Merchant Store',
-                            'comment' => 'Order accepted and confirmed by merchant.',
-                        ]);
-                    }),
-                Action::make('pack_order')
-                    ->label('Pack')
-                    ->icon('heroicon-o-archive-box')
-                    ->color('warning')
-                    ->visible(fn (Order $record) => $record->order_status === 'confirmed')
-                    ->action(function (Order $record) {
-                        $record->update(['order_status' => 'packed']);
-                        OrderStatusHistory::create([
-                            'order_id' => $record->id,
-                            'status' => 'packed',
-                            'location' => 'Fulfillment Center',
-                            'comment' => 'Order packed and prepared for shipment.',
-                        ]);
-                    }),
-                Action::make('ship_order')
-                    ->label('Ship')
-                    ->icon('heroicon-o-truck')
-                    ->color('info')
-                    ->visible(fn (Order $record) => $record->order_status === 'packed')
-                    ->action(function (Order $record) {
-                        $record->update(['order_status' => 'shipped']);
-                        OrderStatusHistory::create([
-                            'order_id' => $record->id,
-                            'status' => 'shipped',
-                            'location' => 'Gujarat Hub',
-                            'comment' => 'Package handed over to Express Courier.',
-                        ]);
-                    }),
-                Action::make('out_for_delivery')
-                    ->label('Out for Delivery')
-                    ->icon('heroicon-o-paper-airplane')
-                    ->color('warning')
-                    ->visible(fn (Order $record) => $record->order_status === 'shipped')
-                    ->action(function (Order $record) {
-                        $record->update(['order_status' => 'out_for_delivery']);
-                        OrderStatusHistory::create([
-                            'order_id' => $record->id,
-                            'status' => 'out_for_delivery',
-                            'location' => 'Local Delivery Hub',
-                            'comment' => 'Package is out for delivery with courier agent.',
-                        ]);
-                    }),
-                Action::make('deliver_order')
-                    ->label('Deliver')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('success')
-                    ->visible(fn (Order $record) => in_array($record->order_status, ['shipped', 'out_for_delivery']))
-                    ->action(function (Order $record) {
-                        $record->update([
-                            'order_status' => 'delivered',
-                            'is_delivered' => true,
-                            'delivered_at' => now(),
-                            'is_paid' => true,
-                        ]);
-                        OrderStatusHistory::create([
-                            'order_id' => $record->id,
-                            'status' => 'delivered',
-                            'location' => 'Customer Destination',
-                            'comment' => 'Order successfully delivered to customer.',
-                        ]);
-                    }),
+                        }),
+                ])
             ])
             ->bulkActions([
                 BulkActionGroup::make([

@@ -34,7 +34,9 @@ class ProductResource extends JsonResource
             'benefits' => $this->benefits ?? [],
             'is_featured' => (bool)$this->is_featured,
             'average_rating' => (float)$this->average_rating,
-            'reviews_count' => $this->reviews()->where('is_approved', true)->count(),
+            'reviews_count' => isset($this->reviews_count)
+                ? (int)$this->reviews_count
+                : ($this->relationLoaded('reviews') ? $this->reviews->where('is_approved', true)->count() : $this->reviews()->where('is_approved', true)->count()),
             'reviews' => ReviewResource::collection($this->whenLoaded('reviews')),
         ];
     }
