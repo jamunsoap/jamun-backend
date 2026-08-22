@@ -58,6 +58,19 @@ class Order extends Model
                 $order->order_number = 'JAMUN-' . strtoupper(Str::random(8));
             }
         });
+
+        static::updated(function ($order) {
+            if ($order->wasChanged('order_status') && $order->order_status === 'confirmed') {
+                if (empty($order->shiprocket_order_id)) {
+                    try {
+                        $service = app(\App\Services\ShiprocketService::class);
+                        $service->createShipment($order);
+                    } catch (\Exception $e) {
+                        \Illuminate\Support\Facades\Log::error('Auto Shiprocket Push Failed for Order ' . $order->id . ': ' . $e->getMessage());
+                    }
+                }
+            }
+        });
     }
 
     public function orderItems(): HasMany

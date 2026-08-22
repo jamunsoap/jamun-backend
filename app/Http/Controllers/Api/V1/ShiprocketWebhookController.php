@@ -21,9 +21,9 @@ class ShiprocketWebhookController extends Controller
         $channelOrderId = $request->input('channel_order_id'); // This is our order_number
         $currentStatus = strtoupper($request->input('current_status', ''));
 
-        // If no identifying info, return 400
+        // If no identifying info, return 200 OK (this allows Shiprocket's connection test to pass)
         if (!$awb && !$shiprocketOrderId && !$channelOrderId) {
-            return response()->json(['success' => false, 'message' => 'Missing identifiers'], 400);
+            return response()->json(['success' => true, 'message' => 'Webhook active'], 200);
         }
 
         // Find the corresponding order in our DB
