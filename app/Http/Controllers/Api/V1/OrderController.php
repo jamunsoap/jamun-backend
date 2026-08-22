@@ -35,6 +35,16 @@ class OrderController extends Controller
                 }
             }
 
+            // Auto push COD orders to Shiprocket immediately
+            if ($order->payment_method === 'COD') {
+                try {
+                    $service = app(\App\Services\ShiprocketService::class);
+                    $service->createShipment($order);
+                } catch (\Exception $se) {
+                    \Illuminate\Support\Facades\Log::error("Failed to auto-push COD order {$order->id} to Shiprocket: " . $se->getMessage());
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Order placed successfully!',
