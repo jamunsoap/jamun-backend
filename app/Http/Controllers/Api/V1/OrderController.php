@@ -30,8 +30,19 @@ class OrderController extends Controller
                 try {
                     \Illuminate\Support\Facades\Mail::to($order->customer_email)
                         ->send(new \App\Mail\OrderPlaced($order));
-                } catch (\Exception $me) {
+                } catch (Exception $me) {
                     \Illuminate\Support\Facades\Log::error("Failed to send order confirmation email for order {$order->id}: " . $me->getMessage());
+                }
+            }
+
+            // Send Admin Email Alert
+            $adminEmail = env('ADMIN_NOTIFICATION_EMAIL');
+            if ($adminEmail) {
+                try {
+                    \Illuminate\Support\Facades\Mail::to($adminEmail)
+                        ->send(new \App\Mail\AdminOrderAlert($order));
+                } catch (Exception $ae) {
+                    \Illuminate\Support\Facades\Log::error("Failed to send admin order alert email for order {$order->id}: " . $ae->getMessage());
                 }
             }
 
@@ -40,7 +51,7 @@ class OrderController extends Controller
                 try {
                     $service = app(\App\Services\ShiprocketService::class);
                     $service->createShipment($order);
-                } catch (\Exception $se) {
+                } catch (Exception $se) {
                     \Illuminate\Support\Facades\Log::error("Failed to auto-push COD order {$order->id} to Shiprocket: " . $se->getMessage());
                 }
             }

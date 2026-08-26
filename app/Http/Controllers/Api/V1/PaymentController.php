@@ -39,6 +39,12 @@ class PaymentController extends Controller
         $keySecret = config('services.razorpay.key_secret', env('RAZORPAY_KEY_SECRET', 'mockSecret456'));
         $amountInPaise = (int)round($order->total_price * 100);
 
+        if ($amountInPaise < 100) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Minimum order amount must be at least ₹1.',
+            ], 400);
+        }
         try {
             // If real credentials are provided, call Razorpay API directly
             if ($keyId !== 'rzp_test_mockKey123' && !empty($keySecret)) {
@@ -68,6 +74,12 @@ class PaymentController extends Controller
                             'phone' => $order->customer_phone,
                         ],
                     ]);
+                } else {
+                    $status = $response->status();
+                    return response()->json([
+                        'success' => false,
+                        'message' => $status === 401 ? 'Razorpay Authentication Failed' : 'Failed to create Razorpay order',
+                    ], $status === 401 ? 401 : 500);
                 }
             }
 
@@ -139,6 +151,8 @@ class PaymentController extends Controller
             ], 400);
         }
 
+        $alreadyConfirmed = ($order->order_status === 'confirmed' || $order->is_paid);
+
         // Mark Order as Paid and Confirmed
         $order->update([
             'is_paid' => true,
@@ -146,6 +160,29 @@ class PaymentController extends Controller
             'order_status' => 'confirmed',
             'payment_method' => 'Razorpay',
         ]);
+
+        if (!$alreadyConfirmed) {
+            // Send Customer Email
+            if ($order->customer_email) {
+                try {
+                    \Illuminate\Support\Facades\Mail::to($order->customer_email)
+                        ->send(new \App\Mail\OrderPlaced($order));
+                } catch (Exception $me) {
+                    Log::error("Failed to send order confirmation email for order {$order->id}: " . $me->getMessage());
+                }
+            }
+
+            // Send Admin Email Alert
+            $adminEmail = env('ADMIN_NOTIFICATION_EMAIL');
+            if ($adminEmail) {
+                try {
+                    \Illuminate\Support\Facades\Mail::to($adminEmail)
+                        ->send(new \App\Mail\AdminOrderAlert($order));
+                } catch (Exception $ae) {
+                    Log::error("Failed to send admin order alert email for order {$order->id}: " . $ae->getMessage());
+                }
+            }
+        }
 
         // Record or Update Payment
         Payment::updateOrCreate(
@@ -206,14 +243,42 @@ class PaymentController extends Controller
             if ($rzpOrderId) {
                 $payment = Payment::whereJsonContains('payload->razorpay_order_id', $rzpOrderId)->first();
                 if ($payment && $payment->order) {
-                    $payment->order->update([
+                    $order = $payment->order;
+                    $alreadyConfirmed = ($order->order_status === 'confirmed' || $order->is_paid);
+
+                    $order->update([
                         'is_paid' => true,
                         'paid_at' => now(),
+                        'order_status' => 'confirmed',
                     ]);
+
                     $payment->update([
                         'status' => 'successful',
                         'transaction_id' => $paymentId,
                     ]);
+
+                    if (!$alreadyConfirmed) {
+                        // Send Customer Email
+                        if ($order->customer_email) {
+                            try {
+                                \Illuminate\Support\Facades\Mail::to($order->customer_email)
+                                    ->send(new \App\Mail\OrderPlaced($order));
+                            } catch (Exception $me) {
+                                Log::error("Failed to send webhook order confirmation email for order {$order->id}: " . $me->getMessage());
+                            }
+                        }
+
+                        // Send Admin Email Alert
+                        $adminEmail = env('ADMIN_NOTIFICATION_EMAIL');
+                        if ($adminEmail) {
+                            try {
+                                \Illuminate\Support\Facades\Mail::to($adminEmail)
+                                    ->send(new \App\Mail\AdminOrderAlert($order));
+                            } catch (Exception $ae) {
+                                Log::error("Failed to send webhook admin order alert email for order {$order->id}: " . $ae->getMessage());
+                            }
+                        }
+                    }
                 }
             }
         }

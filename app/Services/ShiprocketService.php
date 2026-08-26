@@ -14,12 +14,14 @@ class ShiprocketService
     protected string $baseUrl;
     protected ?string $email;
     protected ?string $password;
+    protected string $pickupLocation;
 
     public function __construct()
     {
         $this->baseUrl = config('services.shiprocket.api_url', 'https://apiv2.shiprocket.in/v1/external');
         $this->email = config('services.shiprocket.email');
         $this->password = config('services.shiprocket.password');
+        $this->pickupLocation = config('services.shiprocket.pickup_location', 'Home');
     }
 
     /**
@@ -102,7 +104,7 @@ class ShiprocketService
             $payload = [
                 'order_id' => $order->order_number,
                 'order_date' => $order->created_at->format('Y-m-d H:i'),
-                'pickup_location' => 'Home', // Must match the Exact Name in Shiprocket Dashboard
+                'pickup_location' => $this->pickupLocation, // Must match the Exact Name in Shiprocket Dashboard
                 'channel_id' => '',
                 'comment' => 'Jadui Jamun Botanical Skincare Order',
                 'billing_customer_name' => $order->customer_name,

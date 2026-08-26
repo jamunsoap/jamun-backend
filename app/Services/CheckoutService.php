@@ -54,8 +54,9 @@ class CheckoutService
                 ];
             }
 
-            // Standard Free Shipping threshold rule (e.g. Free shipping above 449, else 49)
-            $shippingPrice = ($itemsPrice >= 449 || $itemsPrice == 0) ? 0.00 : 49.00;
+            // Shipping calculation: Free shipping for online payments OR items total >= 449, else 49.00
+            $isOnlinePayment = in_array(strtoupper($data['payment_method']), ['UPI', 'RAZORPAY', 'CARD']);
+            $shippingPrice = ($isOnlinePayment || $itemsPrice >= 449 || $itemsPrice == 0) ? 0.00 : 49.00;
             $totalPrice = max(0.00, $itemsPrice + $shippingPrice);
 
             // 2. Create the master Order record
