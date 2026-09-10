@@ -21,10 +21,10 @@ class DatabaseSeeder extends Seeder
     {
         // 1. Create Default Master Admin
         $admin = User::updateOrCreate(
-            ['email' => 'admin@jamunsoap.com'],
+            ['email' => 'jamunsoap01@gmail.com'],
             [
                 'name' => 'Jamun Admin',
-                'password' => Hash::make('admin1234'),
+                'password' => Hash::make('jamunsoap01@gmail.com'),
                 'role' => 'admin',
                 'phone' => '+91 9876543210',
                 'address' => 'Surat, Gujarat, India',
