@@ -10,14 +10,19 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Actions\EditAction;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\TagsInput;
 use Filament\Schemas\Components\Section;
+use Illuminate\Support\Str;
 
 class ProductResource extends Resource
 {
@@ -43,10 +48,17 @@ class ProductResource extends Resource
                     ->schema([
                         TextInput::make('name')
                             ->required()
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function ($state, callable $set) {
+                                if (filled($state)) {
+                                    $set('slug', Str::slug($state));
+                                }
+                            }),
                         TextInput::make('slug')
                             ->unique(ignoreRecord: true)
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->required(),
                         TextInput::make('category')
                             ->default('soap')
                             ->required(),
@@ -75,6 +87,31 @@ class ProductResource extends Resource
                             ->required(),
                     ])->columns(3),
 
+                Section::make('Product Media & Gallery')
+                    ->schema([
+                        FileUpload::make('images')
+                            ->label('Product Images')
+                            ->multiple()
+                            ->image()
+                            ->disk('public')
+                            ->directory('products')
+                            ->reorderable()
+                            ->columnSpanFull()
+                            ->helperText('Upload product images. They will be stored securely and served smoothly to the frontend.'),
+                    ]),
+
+                Section::make('Ingredients & Benefits')
+                    ->schema([
+                        TagsInput::make('ingredients')
+                            ->label('Key Ingredients')
+                            ->placeholder('Type ingredient & hit Enter')
+                            ->helperText('e.g. Wild Jamun Extract, Cold-Pressed Neem Oil'),
+                        TagsInput::make('benefits')
+                            ->label('Key Benefits')
+                            ->placeholder('Type benefit & hit Enter')
+                            ->helperText('e.g. Reduces blemishes, Sebum control'),
+                    ])->columns(2),
+
                 Section::make('Visibility & Highlights')
                     ->schema([
                         Toggle::make('is_featured')
@@ -94,10 +131,21 @@ class ProductResource extends Resource
     {
         return $table
             ->columns([
+                ImageColumn::make('images')
+                    ->label('Image')
+                    ->circular()
+                    ->stacked()
+                    ->limit(2)
+                    ->disk('public')
+                    ->defaultImageUrl('/images/front-box-all.png'),
                 TextColumn::make('name')
                     ->searchable()
                     ->sortable()
                     ->weight('bold'),
+                TextColumn::make('category')
+                    ->badge()
+                    ->color('info')
+                    ->sortable(),
                 TextColumn::make('price')
                     ->money('INR')
                     ->sortable(),
@@ -121,6 +169,7 @@ class ProductResource extends Resource
             ])
             ->actions([
                 EditAction::make(),
+                DeleteAction::make(),
             ])
             ->bulkActions([
                 BulkActionGroup::make([

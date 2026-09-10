@@ -61,10 +61,26 @@ class PaymentController extends Controller
 
                 if ($response->successful()) {
                     $rzpOrder = $response->json();
+                    $rzpOrderId = $rzpOrder['id'];
+
+                    Payment::updateOrCreate(
+                        ['order_id' => $order->id],
+                        [
+                            'gateway' => 'Razorpay',
+                            'amount' => $order->total_price,
+                            'currency' => 'INR',
+                            'status' => 'pending',
+                            'payload' => [
+                                'razorpay_order_id' => $rzpOrderId,
+                                'initiated_at' => now()->toIso8601String(),
+                            ],
+                        ]
+                    );
+
                     return response()->json([
                         'success' => true,
                         'key' => $keyId,
-                        'razorpay_order_id' => $rzpOrder['id'],
+                        'razorpay_order_id' => $rzpOrderId,
                         'amount' => $amountInPaise,
                         'currency' => 'INR',
                         'order_number' => $order->order_number,
@@ -85,6 +101,20 @@ class PaymentController extends Controller
 
             // Fallback for local sandbox/test simulation
             $mockRzpOrderId = 'order_mock_' . bin2hex(random_bytes(6));
+            Payment::updateOrCreate(
+                ['order_id' => $order->id],
+                [
+                    'gateway' => 'Razorpay',
+                    'amount' => $order->total_price,
+                    'currency' => 'INR',
+                    'status' => 'pending',
+                    'payload' => [
+                        'razorpay_order_id' => $mockRzpOrderId,
+                        'initiated_at' => now()->toIso8601String(),
+                    ],
+                ]
+            );
+
             return response()->json([
                 'success' => true,
                 'key' => $keyId,

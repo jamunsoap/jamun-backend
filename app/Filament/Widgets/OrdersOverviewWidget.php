@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\Product;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
@@ -16,7 +17,7 @@ class OrdersOverviewWidget extends BaseWidget
         $totalRevenue = Order::where('is_paid', true)->sum('total_price');
         $totalOrders = Order::count();
         $pendingOrders = Order::whereIn('order_status', ['pending', 'confirmed'])->count();
-        $lowStockProducts = Product::where('stock', '<=', 10)->count();
+        $failedPayments = Payment::where('status', 'failed')->count();
 
         return [
             Stat::make('Total Revenue', '₹' . number_format($totalRevenue, 2))
@@ -34,10 +35,10 @@ class OrdersOverviewWidget extends BaseWidget
                 ->descriptionIcon('heroicon-m-clock')
                 ->color($pendingOrders > 0 ? 'warning' : 'success'),
 
-            Stat::make('Low Stock Alerts', $lowStockProducts)
-                ->description('Products with <= 10 items')
-                ->descriptionIcon('heroicon-m-exclamation-triangle')
-                ->color($lowStockProducts > 0 ? 'danger' : 'success'),
+            Stat::make('Failed Payments', $failedPayments)
+                ->description('Transactions needing attention')
+                ->descriptionIcon('heroicon-m-x-circle')
+                ->color($failedPayments > 0 ? 'danger' : 'success'),
         ];
     }
 }

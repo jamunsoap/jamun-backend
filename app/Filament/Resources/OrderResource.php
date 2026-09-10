@@ -11,6 +11,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Actions\Action;
+use Filament\Actions\ViewAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
@@ -20,6 +21,7 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\Repeater;
 use Filament\Schemas\Components\Section;
 
 class OrderResource extends Resource
@@ -105,6 +107,38 @@ class OrderResource extends Resource
                         TextInput::make('shipping_price')->numeric()->prefix('₹')->disabled(),
                         TextInput::make('total_price')->numeric()->prefix('₹')->disabled(),
                     ])->columns(3),
+
+                Section::make('Ordered Items')
+                    ->schema([
+                        Repeater::make('orderItems')
+                            ->relationship('orderItems')
+                            ->schema([
+                                TextInput::make('name')->label('Product Name')->disabled(),
+                                TextInput::make('price')->label('Unit Price')->prefix('₹')->disabled(),
+                                TextInput::make('quantity')->label('Qty')->disabled(),
+                            ])
+                            ->columns(3)
+                            ->deletable(false)
+                            ->addable(false)
+                            ->columnSpanFull(),
+                    ]),
+
+                Section::make('Order Status & Tracking Timeline')
+                    ->schema([
+                        Repeater::make('statusHistories')
+                            ->relationship('statusHistories')
+                            ->schema([
+                                TextInput::make('status')->label('Status')->disabled(),
+                                TextInput::make('location')->label('Location')->disabled(),
+                                TextInput::make('comment')->label('Notes / Remarks')->disabled(),
+                                TextInput::make('created_at')->label('Timestamp')->disabled(),
+                            ])
+                            ->columns(4)
+                            ->deletable(false)
+                            ->addable(false)
+                            ->columnSpanFull(),
+                    ])
+                    ->collapsed(),
             ]);
     }
 
@@ -128,6 +162,15 @@ class OrderResource extends Resource
                     ->money('INR')
                     ->sortable()
                     ->weight('bold'),
+                TextColumn::make('payment_method')
+                    ->label('Payment')
+                    ->badge()
+                    ->color(fn (?string $state): string => match (strtolower((string) $state)) {
+                        'cod' => 'warning',
+                        'razorpay', 'prepaid' => 'success',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn (?string $state): string => strtoupper((string) ($state ?: 'N/A'))),
                 TextColumn::make('order_status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -160,9 +203,16 @@ class OrderResource extends Resource
                         'delivered' => 'Delivered',
                         'cancelled' => 'Cancelled',
                     ]),
+                Tables\Filters\SelectFilter::make('payment_method')
+                    ->label('Payment Method')
+                    ->options([
+                        'cod' => 'Cash on Delivery (COD)',
+                        'razorpay' => 'Prepaid (Razorpay)',
+                    ]),
             ])
             ->actions([
                 ActionGroup::make([
+                    ViewAction::make(),
                     EditAction::make(),
                     Action::make('accept_order')
                         ->label('Accept')

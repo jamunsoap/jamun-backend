@@ -26,7 +26,15 @@ class ProductResource extends JsonResource
                 ? (float)$this->discount_price
                 : (float)$this->price,
             'category' => $this->category,
-            'images' => $this->images ?? [],
+            'images' => collect($this->images ?? [])->map(function ($img) {
+                if (empty($img)) {
+                    return $img;
+                }
+                if (str_starts_with($img, 'http://') || str_starts_with($img, 'https://') || str_starts_with($img, '/')) {
+                    return $img;
+                }
+                return asset('storage/' . $img);
+            })->values()->all(),
             'stock' => (int)$this->stock,
             'in_stock' => $this->stock > 0,
             'weight' => $this->weight,
